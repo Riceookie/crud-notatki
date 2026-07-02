@@ -1,45 +1,32 @@
-'use client'
-
 import { useEffect, useState } from 'react'
+import { supabase } from './supabaseClient.js'
 
-// Prosty helper: wywołanie naszego własnego API i zwrócenie JSON-a.
-// Rzuca błędem z komunikatem z serwera, jeśli odpowiedź nie jest OK.
-async function api(path, options) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `Błąd ${res.status}`)
-  return data
-}
-
-export default function Home() {
+// Aplikacja CRUD: przeglądarka rozmawia bezpośrednio z Supabase (Postgres)
+// przez bibliotekę supabase-js. Dane żyją na serwerze i przeżywają restart.
+export default function App() {
   const [notes, setNotes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Formularz dodawania.
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
 
-  // Edycja w miejscu.
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
 
-  // READ — pobierz listę z /api/notes.
+  // READ — pobierz notatki (najnowsze na górze).
   async function load() {
     setLoading(true)
     setError(null)
-    try {
-      setNotes(await api('/api/notes'))
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+    const { data, error } = await supabase
+      .from('notes')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) setError(error.message)
+    else setNotes(data)
+    setLoading(false)
   }
 
   useEffect(() => {
@@ -50,20 +37,24 @@ export default function Home() {
   async function addNote(e) {
     e.preventDefault()
     setError(null)
-    setSaving(true)
-    try {
-      const created = await api('/api/notes', {
-        method: 'POST',
-        body: JSON.stringify({ title, content }),
-      })
-      setNotes((prev) => [created, ...prev])
-      setTitle('')
-      setContent('')
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setSaving(false)
+    if (!title.trim()) {
+      setError('Tytuł jest wymagany.')
+      return
     }
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({ title: title.trim(), content: content.trim() })
+      .select()
+      .single()
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setNotes((prev) => [data, ...prev])
+    setTitle('')
+    setContent('')
   }
 
   function startEdit(note) {
@@ -76,28 +67,34 @@ export default function Home() {
   // UPDATE — zapisz edycję.
   async function saveEdit(id) {
     setError(null)
-    try {
-      const updated = await api(`/api/notes/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ title: editTitle, content: editContent }),
-      })
-      setNotes((prev) => prev.map((n) => (n.id === id ? updated : n)))
-      setEditingId(null)
-    } catch (e) {
-      setError(e.message)
+    if (!editTitle.trim()) {
+      setError('Tytuł jest wymagany.')
+      return
     }
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ title: editTitle.trim(), content: editContent.trim() })
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setNotes((prev) => prev.map((n) => (n.id === id ? data : n)))
+    setEditingId(null)
   }
 
   // DELETE — usuń notatkę.
   async function removeNote(id) {
     if (!confirm('Usunąć tę notatkę?')) return
     setError(null)
-    try {
-      await api(`/api/notes/${id}`, { method: 'DELETE' })
-      setNotes((prev) => prev.filter((n) => n.id !== id))
-    } catch (e) {
-      setError(e.message)
+    const { error } = await supabase.from('notes').delete().eq('id', id)
+    if (error) {
+      setError(error.message)
+      return
     }
+    setNotes((prev) => prev.filter((n) => n.id !== id))
   }
 
   return (
@@ -105,8 +102,8 @@ export default function Home() {
       <header className="head">
         <h1>📝 Notatki</h1>
         <p className="muted">
-          CRUD na prawdziwym backendzie: <strong>Next.js API</strong> +{' '}
-          <strong>Supabase (Postgres)</strong>. Dane żyją na serwerze i przeżywają restart.
+          CRUD na prawdziwym backendzie: <strong>Supabase (Postgres)</strong>.
+          Dane żyją na serwerze i przeżywają restart oraz odświeżenie strony.
         </p>
       </header>
 
@@ -180,7 +177,7 @@ export default function Home() {
       )}
 
       <footer className="foot">
-        Zadanie: CRUD z backendem · REST API (własne endpointy) · trwałe dane w Postgresie
+        Zadanie: CRUD z backendem · Supabase (Postgres) · dane trwałe po stronie serwera
       </footer>
     </main>
   )

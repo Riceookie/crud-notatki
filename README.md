@@ -1,43 +1,46 @@
 # Notatki — CRUD z backendem
 
-Aplikacja realizująca zadanie **„CRUD z backendem"**: pełny Create/Read/Update/Delete
-na prawdziwym backendzie, z danymi trzymanymi po stronie serwera (przeżywają restart).
+Zadanie **„CRUD z backendem"**: pełny Create/Read/Update/Delete na prawdziwym
+backendzie, z danymi trzymanymi po stronie serwera (przeżywają restart).
 
 ## Stos
 
-- **Next.js (App Router)** — frontend + **własne endpointy REST** w `app/api/notes`.
-- **Supabase (Postgres)** — baza danych, używana wyłącznie po stronie serwera.
-- Deploy: **Vercel**.
+- **Vite + React** — statyczny frontend, hostowany na **GitHub Pages**.
+- **Supabase (Postgres)** — backend/baza z gotowym REST API; frontend rozmawia
+  z nią przez `@supabase/supabase-js`.
 
-## API (własne endpointy)
+## Operacje CRUD
 
-| Metoda | Ścieżka           | Operacja        |
-|--------|-------------------|-----------------|
-| GET    | `/api/notes`      | lista notatek   |
-| POST   | `/api/notes`      | utwórz notatkę  |
-| PUT    | `/api/notes/:id`  | edytuj notatkę  |
-| DELETE | `/api/notes/:id`  | usuń notatkę    |
+| Operacja | Metoda supabase-js                          |
+|----------|---------------------------------------------|
+| Create   | `supabase.from('notes').insert(...)`        |
+| Read     | `supabase.from('notes').select('*')`        |
+| Update   | `supabase.from('notes').update(...).eq(...)`|
+| Delete   | `supabase.from('notes').delete().eq(...)`   |
 
-Walidacja po stronie serwera: pusty tytuł → `400`. Nieistniejące id przy edycji → `404`.
+Walidacja po stronie serwera: ograniczenie `CHECK` w bazie odrzuca pusty tytuł
+(patrz `supabase/policies.sql`). Frontend dodatkowo waliduje dla wygody.
 
-## Konfiguracja (raz)
+## Konfiguracja bazy (raz)
 
-1. **Supabase** → utwórz projekt → SQL Editor → wklej i uruchom `supabase/schema.sql`.
-2. Skopiuj dane z Supabase → Project Settings → API:
-   - `SUPABASE_URL` (Project URL)
-   - `SUPABASE_SERVICE_ROLE_KEY` (klucz `service_role` — sekret!)
-3. Lokalnie: skopiuj `.env.local.example` → `.env.local` i uzupełnij.
-4. Na produkcji: te same dwie zmienne w **Vercel → Settings → Environment Variables**.
+W Supabase → SQL Editor uruchom kolejno:
+1. utworzenie tabeli (`notes`: id, title, content, created_at),
+2. `supabase/policies.sql` — ograniczenie na tytuł + polityki RLS dla roli `anon`.
+
+Klucze w `src/supabaseClient.js` to wartości **publiczne** (URL + klucz `anon`),
+bezpieczne w kodzie frontendu. Klucza `service_role` NIGDY tu nie wstawiamy.
 
 ## Uruchomienie lokalne
 
 ```bash
 npm install
 npm run dev
-# http://localhost:3000
 ```
 
-## Deploy na Vercel
+## Deploy (GitHub Pages)
 
-Zaimportuj repo w Vercel, dodaj dwie zmienne środowiskowe i wdróż.
-Każdy push do `main` = automatyczny redeploy.
+```bash
+npm run build          # -> dist/
+# publikacja zawartości dist/ na branch gh-pages
+```
+Strona: `https://<user>.github.io/crud-notatki/`
